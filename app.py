@@ -729,7 +729,7 @@ if file_selected is not None and filtered_df is not None:
         <div class="kpi-topline">
             <span class="kpi-value">{format_percentage_br(nova_margem_media)}</span>
         </div>
-        <div class="kpi-label">Margem Média (%)</div>
+        <div class="kpi-label">Margem (%)</div>
         <div class="kpi-icon">💹</div>
     </div>
     """, unsafe_allow_html=True)
@@ -773,9 +773,119 @@ if file_selected is not None and filtered_df is not None:
             "<b>Margem (%):</b> %{customdata[3]}<extra></extra>"
         )
         fig_rep_margem = apply_integrated_layout(fig_rep_margem, title='Margem por Representante')
-        st.plotly_chart(fig_rep_margem, use_container_width=True)
+        st.plotly_chart(fig_rep_margem, use_container_width=True)  
     else:
         st.info("Colunas necessárias não encontradas para o gráfico de Representantes.")
+
+        # Participação por Representante (Gráfico de Barras com Toggle)
+    st.markdown("#### Participação por Representante")
+    if 'representante' in filtered_df.columns and 'valor_net' in filtered_df.columns and 'valor_bruto' in filtered_df.columns:
+        # Calcular participação por representante
+        df_participacao_rep = filtered_df.groupby('representante').agg(
+            valor_net=('valor_net', 'sum'),
+            valor_bruto=('valor_bruto', 'sum')
+        ).reset_index()
+
+        # Calcular totais
+        valor_net_total = df_participacao_rep['valor_net'].sum()
+        faturamento_bruto_total = df_participacao_rep['valor_bruto'].sum()
+
+        # Calcular ambos os percentuais
+        df_participacao_rep['participacao_net'] = (df_participacao_rep['valor_net'] / valor_net_total * 100)
+        df_participacao_rep['participacao_bruto'] = (df_participacao_rep['valor_bruto'] / faturamento_bruto_total * 100)
+
+        # Ordenar por valor_net decrescente
+        df_participacao_rep = df_participacao_rep.sort_values('valor_net', ascending=False)
+
+        # ✅ BOTÃO DE ALTERNÂNCIA CENTRALIZADO COM ESPAÇAMENTO REDUZIDO
+        
+        # Centralizar os botões radio
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            metrica_selecionada = st.radio(
+                "",  # Label vazio já que colocamos acima
+                options=["Valor NET", "Faturamento Bruto"],
+                horizontal=True,
+                key="toggle_participacao",
+                label_visibility="collapsed"  # Esconde o label padrão
+            )
+
+        # Definir dados baseados na seleção
+        if metrica_selecionada == "Valor NET":
+            y_column = 'participacao_net'
+            y_label = 'Participação por Valor NET (%)'
+            titulo_grafico = 'Participação por Representante - Valor NET'
+            total_referencia = valor_net_total
+            valor_referencia_col = 'valor_net'
+        else:
+            y_column = 'participacao_bruto'
+            y_label = 'Participação por Faturamento Bruto (%)'
+            titulo_grafico = 'Participação por Representante - Faturamento Bruto'
+            total_referencia = faturamento_bruto_total
+            valor_referencia_col = 'valor_bruto'
+
+        # Formatação para tooltips
+        df_participacao_rep['valor_net_fmt'] = df_participacao_rep['valor_net'].apply(tooltip_fmt_br)
+        df_participacao_rep['valor_bruto_fmt'] = df_participacao_rep['valor_bruto'].apply(tooltip_fmt_br)
+        df_participacao_rep['participacao_net_fmt'] = df_participacao_rep['participacao_net'].apply(lambda x: f"{x:.2f}%")
+        df_participacao_rep['participacao_bruto_fmt'] = df_participacao_rep['participacao_bruto'].apply(lambda x: f"{x:.2f}%")
+        total_referencia_fmt = tooltip_fmt_br(total_referencia)
+
+        # Criar gráfico de barras verticais
+        fig_participacao_rep = px.bar(
+            df_participacao_rep,
+            x='representante',
+            y=y_column,
+            text_auto='.1f',
+            labels={y_column: y_label, 'representante': 'Representante'},
+            custom_data=['valor_net_fmt', 'valor_bruto_fmt', 'participacao_net_fmt', 'participacao_bruto_fmt']
+        )
+
+        # Template de tooltip dinâmico
+        if metrica_selecionada == "Valor NET":
+            hovertemplate = (
+                "<b>Representante:</b> %{x}<br>" +
+                "<b>Valor NET:</b> %{customdata[0]}<br>" +
+                "<b>Participação NET:</b> %{customdata[2]}<br>" +
+                f"<b>Valor NET Total:</b> {total_referencia_fmt}<br>" +
+                "<extra></extra>"
+            )
+        else:
+            hovertemplate = (
+                "<b>Representante:</b> %{x}<br>" +
+                "<b>Faturamento Bruto:</b> %{customdata[1]}<br>" +
+                "<b>Participação Bruto:</b> %{customdata[3]}<br>" +
+                f"<b>Faturamento Bruto Total:</b> {total_referencia_fmt}<br>" +
+                "<extra></extra>"
+            )
+
+        # Aplicar template de tooltip personalizado
+        fig_participacao_rep.update_traces(
+            hovertemplate=hovertemplate,
+            texttemplate='%{y:.1f}%',
+            textposition='auto',
+            marker=dict(
+                color='#6C5B7B',
+                line=dict(width=0),
+                opacity=0.96
+            ),
+            textfont=dict(color='#ADD8E6', size=16),
+            hoverlabel=dict(
+                font_size=18, 
+                font_family="Segoe UI, sans-serif", 
+                bgcolor='#6C5B7B', 
+                font_color='#E0E0E0',
+                align='left'
+            )
+        )
+
+        # Aplicar layout integrado
+        fig_participacao_rep = apply_integrated_layout(fig_participacao_rep, title=titulo_grafico)
+
+        st.plotly_chart(fig_participacao_rep, use_container_width=True)
+    else:
+        st.info("Colunas necessárias não encontradas para o gráfico de Participação por Representante.")
+
     # Margem por Cliente (Top 10)
     st.markdown("#### Margem por Cliente")
     if 'cliente' in filtered_df.columns and 'margem_em_valor' in filtered_df.columns and 'valor_net' in filtered_df.columns and 'custo_total' in filtered_df.columns:
@@ -973,77 +1083,9 @@ if file_selected is not None and filtered_df is not None:
     else:
         st.info("Colunas necessárias não encontradas para o gráfico de Produtos.")
 
-# =========== BOTÃO MODO APRESENTAÇÃO ===========
-if file_selected is not None and filtered_df is not None:
-    st.markdown("---")
-    
-    # CSS com !important forçado
-    st.markdown("""
-    <style>
-    div[data-testid="column"]:nth-child(2) .stButton > button {
-        background: linear-gradient(135deg, #FF6B6B 0%, #4ECDC4 25%, #45B7D1 50%, #96CEB4 75%, #FFEAA7 100%) !important;
-        border: 3px solid #FFD93D !important;
-        border-radius: 25px !important;
-        padding: 15px 40px !important;
-        font-size: 1.3em !important;
-        font-weight: 800 !important;
-        color: #FFFFFF !important;
-        box-shadow: 
-            0 12px 35px rgba(255, 107, 107, 0.4),
-            0 6px 20px rgba(78, 205, 196, 0.3),
-            0 0 25px rgba(69, 183, 209, 0.2),
-            inset 0 3px 6px rgba(255, 255, 255, 0.4) !important;
-        transition: all 0.4s ease !important;
-        width: 100% !important;
-        max-width: 300px !important;
-        margin: 0 auto !important;
-        display: block !important;
-        text-shadow: 0 3px 8px rgba(0, 0, 0, 0.5) !important;
-        letter-spacing: 1.5px !important;
-        text-transform: uppercase !important;
-        position: relative !important;
-        overflow: hidden !important;
-    }
-    
-    div[data-testid="column"]:nth-child(2) .stButton > button:hover {
-        transform: translateY(-4px) scale(1.05) !important;
-        background: linear-gradient(135deg, #FF8E8E 0%, #6EDCD4 25%, #67C4E8 50%, #B8E6C1 75%, #FFE4B3 100%) !important;
-        border-color: #FFC107 !important;
-        box-shadow: 
-            0 18px 50px rgba(255, 107, 107, 0.6),
-            0 10px 30px rgba(78, 205, 196, 0.5),
-            0 0 40px rgba(69, 183, 209, 0.4),
-            inset 0 4px 8px rgba(255, 255, 255, 0.5) !important;
-        text-shadow: 0 4px 12px rgba(0, 0, 0, 0.6) !important;
-    }
-    
-    .stButton {
-        display: flex !important;
-        justify-content: center !important;
-        margin: 15px 0 !important;
-    }
-    
-    /* Força o estilo mesmo com cache */
-    .stButton button[kind="primary"] {
-        all: unset !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Container com coluna específica para o botão
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
-        if st.button("🎯 Modo Apresentação", key="presentation_mode", 
-                    help="Clique para acessar o modo apresentação"):
-            st.session_state.page_mode = "presentation"
-            st.rerun()
-
 st.markdown("---")
 st.markdown("Desenvolvido com Streamlit.")
 
-# Controle de páginas
-if st.session_state.page_mode == "presentation":
-    presentation_mode()
 
 
 
